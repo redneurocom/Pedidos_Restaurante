@@ -339,3 +339,8 @@ if __name__ == "__main__":
     menu()
 
 # Fin de menu.py
+#TODO falta corregir el id de mesero del login probe con otra mesera pero no lo registro su id en facturacion
+#TODO como sugerencia en el menu de facturacion deberia aparecer las ordenes que esten en estado "Finalizado" y no todas las ordenes
+#TODO cuando se facture deberia cambiar a un estado nuevo "Facturado" y no eliminar el pedido
+#TODO falta agregar el metodo de facturacion por mesa y que se pueda ver el detalle de la factura
+#todo Tambien se podria ir acumulando el pedido en el menu de tomar pedido a medida que se van agregando productos para ir viendo los platos y el total
