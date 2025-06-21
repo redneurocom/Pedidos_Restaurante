@@ -83,6 +83,7 @@ class Pedido(Base):
         _fecha_inicio (datetime): Fecha y hora de creación del pedido (privado).
         _fecha_fin (datetime): Fecha y hora de finalización del pedido (privado).
     """
+
     __tablename__ = 'pedidos'
     id = Column(Integer, primary_key=True)
     _mesa_id = Column(Integer, ForeignKey('mesas.id'))
@@ -90,22 +91,36 @@ class Pedido(Base):
     _estado = Column(String(30), default="Pedido realizado")
     _fecha_inicio = Column(DateTime, default=datetime.now)
     _fecha_fin = Column(DateTime, nullable=True)
+    _hora_inicio_preparacion = Column(DateTime, nullable=True)
+    _hora_fin_preparacion = Column(DateTime, nullable=True)
+    # Se cambia de Integer a Float para mayor precisión
+    _duracion_preparacion = Column(Float, nullable=True)
+
     mesa = relationship("Mesa", back_populates="pedidos")
     mesero = relationship("Empleado")
     detalles = relationship("DetallePedido", back_populates="pedido")
 
     @property
     def estado(self):
-        """Propiedad para acceder al estado del pedido."""
         return self._estado
 
     def _cambiar_estado(self, nuevo_estado):
-        """Método protegido para cambiar el estado del pedido."""
-        if nuevo_estado in ["Pedido realizado", "En preparación", "Finalizado", "Facturado"]:
-            self._estado = nuevo_estado
-            if nuevo_estado == "Finalizado":
-                self._fecha_fin = datetime.now()
+        if nuevo_estado not in ["Pedido realizado", "En preparación", "Entregado", "Finalizado", "Facturado"]:
+            return
 
+        if nuevo_estado == "En preparación":
+            if not self._hora_inicio_preparacion:
+                self._hora_inicio_preparacion = datetime.now()
+        elif nuevo_estado == "Entregado":
+            if self._hora_inicio_preparacion and not self._hora_fin_preparacion:
+                self._hora_fin_preparacion = datetime.now()
+                diff = self._hora_fin_preparacion - self._hora_inicio_preparacion
+                # Se calcula en minutos con decimales
+                self._duracion_preparacion = diff.total_seconds() / 60.0
+        elif nuevo_estado == "Finalizado":
+            self._fecha_fin = datetime.now()
+
+        self._estado = nuevo_estado
 class DetallePedido(Base):
     """
     Clase que representa los detalles de un pedido (productos solicitados).

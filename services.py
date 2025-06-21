@@ -76,7 +76,7 @@ class FacturaService:
         """Inicializa el servicio con un repositorio."""
         self.repo = repo
 
-# python
+
     def facturar_mesa(self, mesa_numero: int):
         """
         Genera una factura para una mesa con pedidos finalizados.
@@ -87,8 +87,6 @@ class FacturaService:
             mesa = self.repo.get_by_numero(Mesa, mesa_numero)
             if not mesa:
                 raise ValueError(f"Mesa {mesa_numero} no existe.")
-            if mesa.estado == "Libre":
-                raise ValueError("La mesa está libre.")
 
             # Se obtienen solo los pedidos finalizados (y no facturados) de la mesa
             pedidos_finalizados = [p for p in mesa.pedidos if p.estado == "Finalizado"]
@@ -112,6 +110,7 @@ class FacturaService:
             factura._calcular_total()
             self.repo.update(factura)
 
+            # Liberar la mesa al facturar
             mesa._cambiar_estado("Libre")
             self.repo.update(mesa)
 

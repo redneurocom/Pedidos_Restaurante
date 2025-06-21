@@ -170,27 +170,50 @@ def mostrar_menu_productos(repo: Repository):
     for prod in productos:
         print(f"ID: {prod.id}, {prod.nombre} ({prod._categoria}) - S/. {prod.precio:.2f}")
 
+
 def tomar_pedido(repo: Repository, pedido_service: PedidoService, mesero_id: int):
-    """
-    Permite al mesero tomar un pedido para una mesa.
-    Parámetros:
-        repo (Repository): Repositorio para operaciones CRUD.
-        pedido_service (PedidoService): Servicio para gestionar pedidos.
-        mesero_id (int): ID del mesero logueado.
-    """
     try:
         mesa_numero = int(input("Número de la mesa (1-15): "))
         if mesa_numero < 1 or mesa_numero > 15:
             raise ValueError("Número de mesa inválido.")
 
+        # Validar que la mesa esté libre
+        mesa = repo.get_by_numero(Mesa, mesa_numero)
+        if not mesa:
+            raise ValueError(f"Mesa {mesa_numero} no existe.")
+        if mesa.estado != "Libre":
+            print(f"Error: la mesa {mesa_numero} ya está ocupada.")
+            return
+
+        productos_disponibles = repo.get_all(Producto)
         mostrar_menu_productos(repo)
         productos = []
         while True:
-            prod_id = input("ID del producto (0 para terminar): ")
-            if prod_id == "0":
+            prod_input = input("ID del producto (0 para terminar): ")
+            if prod_input == "0":
                 break
-            cantidad = int(input("Cantidad: "))
-            productos.append((int(prod_id), cantidad))
+            try:
+                prod_id = int(prod_input)
+            except ValueError:
+                print("Error: ID inválido.")
+                continue
+
+            producto_encontrado = next((prod for prod in productos_disponibles if prod.id == prod_id), None)
+            if not producto_encontrado:
+                print("Error: Producto no existe.")
+                continue
+
+            try:
+                cantidad = int(input("Cantidad: "))
+            except ValueError:
+                print("Error: cantidad inválida.")
+                continue
+
+            if cantidad <= 0:
+                print("Error: la cantidad debe ser mayor que cero.")
+                continue
+
+            productos.append((prod_id, cantidad))
 
         if not productos:
             print("No se seleccionaron productos.")
@@ -300,14 +323,16 @@ def menu():
                         print("Opción inválida.")
             elif opcion == "5":
                 ver_disponibilidad_mesas(repo)
+
+            # Se modifica la opción 6 para la secuencia de estados: "Pedido realizado" -> "En preparación" -> "Entregado" -> "Finalizado"
             elif opcion == "6":
                 if not sesion.empleado_actual:
                     print("Debe iniciar sesión primero.")
                     continue
                 # Filtrar pedidos que se puedan cambiar
-                pedidos_cambiables = [p for p in repo.get_all(Pedido) if p.estado in ["Pedido realizado", "En preparación"]]
+                pedidos_cambiables = [p for p in repo.get_all(Pedido) if p.estado in ["Pedido realizado", "En preparación", "Entregado"]]
                 if not pedidos_cambiables:
-                    print("No hay pedidos en estado 'Pedido realizado' o 'En preparación' disponibles.")
+                    print("No hay pedidos en estado que permitan cambio.")
                     continue
                 print("Pedidos disponibles para cambiar de estado:")
                 for idx, pedido in enumerate(pedidos_cambiables, 1):
@@ -319,10 +344,12 @@ def menu():
                     print("Opción inválida.")
                     continue
 
-                # Filtrar el estado posible según la secuencia
+                # Definir la secuencia de cambios de estado
                 if pedido_seleccionado.estado == "Pedido realizado":
                     nuevos_estados = ["En preparación"]
                 elif pedido_seleccionado.estado == "En preparación":
+                    nuevos_estados = ["Entregado"]
+                elif pedido_seleccionado.estado == "Entregado":
                     nuevos_estados = ["Finalizado"]
                 else:
                     print("El pedido no puede cambiar de estado desde su estado actual.")
@@ -371,8 +398,5 @@ if __name__ == "__main__":
     menu()
 
 # Fin de menu.py
-#TODO falta corregir el id de mesero del login probe con otra mesera pero no lo registro su id en facturacion
-#TODO como sugerencia en el menu de facturacion deberia aparecer las ordenes que esten en estado "Finalizado" y no todas las ordenes
-#TODO cuando se facture deberia cambiar a un estado nuevo "Facturado" y no eliminar el pedido
 #TODO falta agregar el metodo de facturacion por mesa y que se pueda ver el detalle de la factura
 #todo Tambien se podria ir acumulando el pedido en el menu de tomar pedido a medida que se van agregando productos para ir viendo los platos y el total
