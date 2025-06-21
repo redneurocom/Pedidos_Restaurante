@@ -76,6 +76,7 @@ class FacturaService:
         """Inicializa el servicio con un repositorio."""
         self.repo = repo
 
+# python
     def facturar_mesa(self, mesa_numero: int):
         """
         Genera una factura para una mesa con pedidos finalizados.
@@ -89,18 +90,24 @@ class FacturaService:
             if mesa.estado == "Libre":
                 raise ValueError("La mesa está libre.")
 
+            # Se obtienen solo los pedidos finalizados (y no facturados) de la mesa
             pedidos_finalizados = [p for p in mesa.pedidos if p.estado == "Finalizado"]
             if not pedidos_finalizados:
                 raise ValueError("No hay pedidos finalizados para facturar.")
 
+            # Se crea la factura usando el id de mesero del primer pedido finalizado
             factura = Factura(_mesa_id=mesa.id, _mesero_id=pedidos_finalizados[0]._mesero_id)
-            self.repo.add(factura)  # Asegura que la factura tenga un ID
+            self.repo.add(factura)  # Se asegura que la factura tenga un ID
 
             for pedido in pedidos_finalizados:
                 subtotal = sum(d.producto.precio * d._cantidad for d in pedido.detalles)
                 detalle = DetalleFactura(_factura_id=factura.id, _pedido_id=pedido.id, _subtotal=subtotal)
                 factura.detalles.append(detalle)
                 self.repo.add(detalle)
+
+                # Cambiar el estado del pedido a "Facturado"
+                pedido._cambiar_estado("Facturado")
+                self.repo.update(pedido)
 
             factura._calcular_total()
             self.repo.update(factura)
@@ -109,7 +116,7 @@ class FacturaService:
             self.repo.update(mesa)
 
             print(f"\nFactura para Mesa {mesa_numero}")
-            print(f"Mesero: {pedidos_finalizados[0].mesero.nombre}")
+            print(f"Mesero (del pedido): {pedidos_finalizados[0].mesero.nombre}")
             print("Detalles:")
             for detalle in factura.detalles:
                 pedido = detalle.pedido

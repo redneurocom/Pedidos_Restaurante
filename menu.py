@@ -283,26 +283,58 @@ def menu():
             elif opcion == "3":
                 ver_cola_pedidos(repo)
             elif opcion == "4":
-                if not sesion.empleado_actual:
-                    print("Debe iniciar sesión primero.")
-                    continue
-                mesa_numero = int(input("Número de la mesa (1-15): "))
-                factura_service.facturar_mesa(mesa_numero)
+                # Buscar mesas con al menos un pedido finalizado
+                mesas_finalizadas = [mesa for mesa in repo.get_all(Mesa) if any(p.estado == "Finalizado" for p in mesa.pedidos)]
+                if not mesas_finalizadas:
+                    print("No hay ordenes finalizadas para facturar.")
+                else:
+                    print("\nOrdenes finalizadas disponibles para facturar:")
+                    for idx, mesa in enumerate(mesas_finalizadas, 1):
+                        pedidos_finalizados = [p for p in mesa.pedidos if p.estado == "Finalizado"]
+                        print(f"{idx}. Mesa {mesa.numero} (Pedidos finalizados: {len(pedidos_finalizados)})")
+                    opcion_mesa = int(input("Seleccione la opción de mesa a facturar: "))
+                    if 1 <= opcion_mesa <= len(mesas_finalizadas):
+                        mesa_seleccionada = mesas_finalizadas[opcion_mesa - 1]
+                        factura_service.facturar_mesa(mesa_seleccionada.numero)
+                    else:
+                        print("Opción inválida.")
             elif opcion == "5":
                 ver_disponibilidad_mesas(repo)
             elif opcion == "6":
                 if not sesion.empleado_actual:
                     print("Debe iniciar sesión primero.")
                     continue
-                pedido_id = int(input("ID del pedido: "))
-                estados = ["Pedido realizado", "En preparación", "Finalizado"]
+                # Filtrar pedidos que se puedan cambiar
+                pedidos_cambiables = [p for p in repo.get_all(Pedido) if p.estado in ["Pedido realizado", "En preparación"]]
+                if not pedidos_cambiables:
+                    print("No hay pedidos en estado 'Pedido realizado' o 'En preparación' disponibles.")
+                    continue
+                print("Pedidos disponibles para cambiar de estado:")
+                for idx, pedido in enumerate(pedidos_cambiables, 1):
+                    print(f"{idx}. Pedido ID: {pedido.id}, Mesa: {pedido.mesa.numero}, Estado: {pedido.estado}")
+                opcion_pedido = int(input("Seleccione el pedido a modificar: "))
+                if 1 <= opcion_pedido <= len(pedidos_cambiables):
+                    pedido_seleccionado = pedidos_cambiables[opcion_pedido - 1]
+                else:
+                    print("Opción inválida.")
+                    continue
+
+                # Filtrar el estado posible según la secuencia
+                if pedido_seleccionado.estado == "Pedido realizado":
+                    nuevos_estados = ["En preparación"]
+                elif pedido_seleccionado.estado == "En preparación":
+                    nuevos_estados = ["Finalizado"]
+                else:
+                    print("El pedido no puede cambiar de estado desde su estado actual.")
+                    continue
+
                 print("Seleccione nuevo estado:")
-                for i, e in enumerate(estados, 1):
+                for i, e in enumerate(nuevos_estados, 1):
                     print(f"{i}. {e}")
-                idx = int(input("Opción (1-3): "))
-                if 1 <= idx <= len(estados):
-                    nuevo_estado = estados[idx - 1]
-                    pedido_service.cambiar_estado(pedido_id, nuevo_estado)
+                idx = int(input("Opción: "))
+                if 1 <= idx <= len(nuevos_estados):
+                    nuevo_estado = nuevos_estados[idx - 1]
+                    pedido_service.cambiar_estado(pedido_seleccionado.id, nuevo_estado)
                 else:
                     print("Opción de estado inválida.")
             elif opcion == "7":

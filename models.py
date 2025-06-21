@@ -101,7 +101,7 @@ class Pedido(Base):
 
     def _cambiar_estado(self, nuevo_estado):
         """Método protegido para cambiar el estado del pedido."""
-        if nuevo_estado in ["Pedido realizado", "En preparación", "Finalizado"]:
+        if nuevo_estado in ["Pedido realizado", "En preparación", "Finalizado", "Facturado"]:
             self._estado = nuevo_estado
             if nuevo_estado == "Finalizado":
                 self._fecha_fin = datetime.now()
