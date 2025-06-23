@@ -1,6 +1,3 @@
-# Este archivo contiene las definiciones de las clases de modelo que representan las tablas de la base de datos.
-# Las clases usan atributos privados, propiedades públicas y métodos protegidos según las buenas prácticas de POO.
-
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime
@@ -8,15 +5,6 @@ from datetime import datetime
 Base = declarative_base()
 
 class Empleado(Base):
-    """
-    Clase que representa a un empleado del restaurante.
-    Atributos:
-        id (int): Identificador único del empleado.
-        _codigo (str): Código único del empleado (privado).
-        _nombre (str): Nombre del empleado (privado).
-        _rol (str): Rol del empleado (e.g., mesero, cocinero) (privado).
-        _clave (str): Clave de acceso del empleado (privado).
-    """
     __tablename__ = 'empleados'
     id = Column(Integer, primary_key=True)
     _codigo = Column(String(20), unique=True)
@@ -26,64 +14,39 @@ class Empleado(Base):
 
     @property
     def codigo(self):
-        """Propiedad para acceder al código del empleado."""
         return self._codigo
 
     @property
     def nombre(self):
-        """Propiedad para acceder al nombre del empleado."""
         return self._nombre
 
     @property
     def rol(self):
-        """Propiedad para acceder al rol del empleado."""
         return self._rol
 
     def _verificar_clave(self, clave):
-        """Método protegido para verificar la clave del empleado."""
         return self._clave == clave
 
 class Mesa(Base):
-    """
-    Clase que representa una mesa del restaurante.
-    Atributos:
-        id (int): Identificador único de la mesa.
-        _numero (int): Número de la mesa (privado).
-        _estado (str): Estado de la mesa (Libre/Ocupada) (privado).
-    """
     __tablename__ = 'mesas'
     id = Column(Integer, primary_key=True)
     _numero = Column(Integer, unique=True)
     _estado = Column(String(20), default="Libre")
-    pedidos = relationship("Pedido", back_populates="mesa")  # Relación con pedidos
+    pedidos = relationship("Pedido", back_populates="mesa")
 
     @property
     def numero(self):
-        """Propiedad para acceder al número de la mesa."""
         return self._numero
 
     @property
     def estado(self):
-        """Propiedad para acceder al estado de la mesa."""
         return self._estado
 
     def _cambiar_estado(self, estado):
-        """Método protegido para cambiar el estado de la mesa."""
         if estado in ["Libre", "Ocupada"]:
             self._estado = estado
 
 class Pedido(Base):
-    """
-    Clase que representa un pedido realizado en una mesa.
-    Atributos:
-        id (int): Identificador único del pedido.
-        _mesa_id (int): ID de la mesa asociada (privado).
-        _mesero_id (int): ID del mesero que tomó el pedido (privado).
-        _estado (str): Estado del pedido (Pedido realizado, En preparación, Finalizado) (privado).
-        _fecha_inicio (datetime): Fecha y hora de creación del pedido (privado).
-        _fecha_fin (datetime): Fecha y hora de finalización del pedido (privado).
-    """
-
     __tablename__ = 'pedidos'
     id = Column(Integer, primary_key=True)
     _mesa_id = Column(Integer, ForeignKey('mesas.id'))
@@ -91,10 +54,6 @@ class Pedido(Base):
     _estado = Column(String(30), default="Pedido realizado")
     _fecha_inicio = Column(DateTime, default=datetime.now)
     _fecha_fin = Column(DateTime, nullable=True)
-    _hora_inicio_preparacion = Column(DateTime, nullable=True)
-    _hora_fin_preparacion = Column(DateTime, nullable=True)
-    # Se cambia de Integer a Float para mayor precisión
-    _duracion_preparacion = Column(Float, nullable=True)
 
     mesa = relationship("Mesa", back_populates="pedidos")
     mesero = relationship("Empleado")
@@ -105,48 +64,60 @@ class Pedido(Base):
         return self._estado
 
     def _cambiar_estado(self, nuevo_estado):
-        if nuevo_estado not in ["Pedido realizado", "En preparación", "Entregado", "Finalizado", "Facturado"]:
+        allowed_states = ["Pedido realizado", "En preparación", "Entregado", "Finalizado"]
+        if nuevo_estado not in allowed_states:
             return
-
-        if nuevo_estado == "En preparación":
-            if not self._hora_inicio_preparacion:
-                self._hora_inicio_preparacion = datetime.now()
-        elif nuevo_estado == "Entregado":
-            if self._hora_inicio_preparacion and not self._hora_fin_preparacion:
-                self._hora_fin_preparacion = datetime.now()
-                diff = self._hora_fin_preparacion - self._hora_inicio_preparacion
-                # Se calcula en minutos con decimales
-                self._duracion_preparacion = diff.total_seconds() / 60.0
-        elif nuevo_estado == "Finalizado":
+        current_index = allowed_states.index(self._estado)
+        new_index = allowed_states.index(nuevo_estado)
+        if new_index <= current_index:
+            return  # No se permite retroceder
+        if nuevo_estado == "Finalizado":
             self._fecha_fin = datetime.now()
-
         self._estado = nuevo_estado
+
 class DetallePedido(Base):
-    """
-    Clase que representa los detalles de un pedido (productos solicitados).
-    Atributos:
-        id (int): Identificador único del detalle.
-        _pedido_id (int): ID del pedido asociado (privado).
-        _producto_id (int): ID del producto solicitado (privado).
-        _cantidad (int): Cantidad del producto (privado).
-    """
     __tablename__ = 'detalles_pedido'
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     _pedido_id = Column(Integer, ForeignKey('pedidos.id'))
+    sub_id = Column(Integer)
     _producto_id = Column(Integer, ForeignKey('productos.id'))
-    _cantidad = Column(Integer)
+    _estado = Column(String(30), default="Pedido realizado")
+    # Se reemplaza _fecha_inicio por _fecha_creacion y se agregan nuevos campos
+    _fecha_creacion = Column(DateTime, default=datetime.now)
+    _inicio_preparacion = Column(DateTime, nullable=True)
+    _fin_preparacion = Column(DateTime, nullable=True)
+    _fin_finalizacion = Column(DateTime, nullable=True)
+    _duracion_preparacion = Column(Float, nullable=True)
+
     pedido = relationship("Pedido", back_populates="detalles")
     producto = relationship("Producto")
 
+    @property
+    def estado(self):
+        return self._estado
+
+    def _cambiar_estado(self, nuevo_estado):
+        allowed_states = ["Pedido realizado", "En preparación", "Entregado", "Finalizado"]
+        if nuevo_estado not in allowed_states:
+            return
+        current_index = allowed_states.index(self._estado)
+        new_index = allowed_states.index(nuevo_estado)
+        if new_index <= current_index:
+            return  # No se permite retroceder
+        if nuevo_estado == "En preparación":
+            if not self._inicio_preparacion:
+                self._inicio_preparacion = datetime.now()
+        elif nuevo_estado == "Entregado":
+            if self._inicio_preparacion and not self._fin_preparacion:
+                self._fin_preparacion = datetime.now()
+                diff = self._fin_preparacion - self._inicio_preparacion
+                self._duracion_preparacion = diff.total_seconds() / 60.0
+        elif nuevo_estado == "Finalizado":
+            if not self._fin_finalizacion:
+                self._fin_finalizacion = datetime.now()
+        self._estado = nuevo_estado
+
 class Producto(Base):
-    """
-    Clase que representa un producto del menú.
-    Atributos:
-        id (int): Identificador único del producto.
-        _nombre (str): Nombre del producto (privado).
-        _categoria (str): Categoría del producto (privado).
-        _precio (float): Precio del producto (privado).
-    """
     __tablename__ = 'productos'
     id = Column(Integer, primary_key=True)
     _nombre = Column(String(100))
@@ -155,24 +126,13 @@ class Producto(Base):
 
     @property
     def nombre(self):
-        """Propiedad para acceder al nombre del producto."""
         return self._nombre
 
     @property
     def precio(self):
-        """Propiedad para acceder al precio del producto."""
         return self._precio
 
 class Factura(Base):
-    """
-    Clase que representa una factura de una mesa.
-    Atributos:
-        id (int): Identificador único de la factura.
-        _mesa_id (int): ID de la mesa asociada (privado).
-        _mesero_id (int): ID del mesero que atendió (privado).
-        _fecha_hora (datetime): Fecha y hora de la factura (privado).
-        _total (float): Total de la factura (privado).
-    """
     __tablename__ = 'facturas'
     id = Column(Integer, primary_key=True)
     _mesa_id = Column(Integer, ForeignKey('mesas.id'))
@@ -184,18 +144,9 @@ class Factura(Base):
     detalles = relationship("DetalleFactura", back_populates="factura")
 
     def _calcular_total(self):
-        """Método protegido para calcular el total de la factura."""
         self._total = sum(detalle.subtotal for detalle in self.detalles)
 
 class DetalleFactura(Base):
-    """
-    Clase que representa los detalles de una factura (pedidos incluidos).
-    Atributos:
-        id (int): Identificador único del detalle.
-        _factura_id (int): ID de la factura asociada (privado).
-        _pedido_id (int): ID del pedido incluido (privado).
-        _subtotal (float): Subtotal del pedido (privado).
-    """
     __tablename__ = 'detalles_factura'
     id = Column(Integer, primary_key=True)
     _factura_id = Column(Integer, ForeignKey('facturas.id'))
@@ -206,10 +157,8 @@ class DetalleFactura(Base):
 
     @property
     def subtotal(self):
-        """Propiedad pública para acceder al subtotal."""
         return self._subtotal
 
-# Configuración de la base de datos
 engine = create_engine('mysql+pymysql://root:@localhost/restaurante')
-Base.metadata.create_all(engine)  # Crea las tablas automáticamente si no existen
+Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)

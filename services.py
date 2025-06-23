@@ -1,27 +1,12 @@
-# Este archivo contiene la lógica de negocio para pedidos y facturación.
-
 from models import Mesa, Pedido, DetallePedido, Producto, Factura, DetalleFactura
 from repository import Repository
-
+from datetime import datetime
 
 class PedidoService:
-    """
-    Servicio para gestionar pedidos en el restaurante.
-    Atributos:
-        repo (Repository): Instancia del repositorio para operaciones CRUD.
-    """
     def __init__(self, repo: Repository):
-        """Inicializa el servicio con un repositorio."""
         self.repo = repo
 
     def crear_pedido(self, mesa_numero: int, mesero_id: int, productos: list):
-        """
-        Crea un nuevo pedido para una mesa específica.
-        Parámetros:
-            mesa_numero (int): Número de la mesa.
-            mesero_id (int): ID del mesero.
-            productos (list): Lista de tuplas (producto_id, cantidad).
-        """
         try:
             mesa = self.repo.get_by_numero(Mesa, mesa_numero)
             if not mesa:
@@ -29,98 +14,137 @@ class PedidoService:
             if mesa.estado == "Ocupada":
                 raise ValueError("La mesa ya está ocupada.")
 
+            # Crear el pedido
             pedido = Pedido(_mesa_id=mesa.id, _mesero_id=mesero_id)
-            self.repo.add(pedido)  # Asegura que el pedido tenga un ID
+            self.repo.add(pedido)  # Guardar el pedido para obtener su ID
 
+            # Crear los detalles del pedido
             for prod_id, cantidad in productos:
                 producto = self.repo.get(Producto, prod_id)
                 if not producto:
                     raise ValueError(f"Producto con ID {prod_id} no existe.")
                 if cantidad <= 0:
-                    raise ValueError("La cantidad debe ser mayor a 0.")
-                detalle = DetallePedido(_pedido_id=pedido.id, _producto_id=prod_id, _cantidad=cantidad)
-                self.repo.add(detalle)
+                    raise ValueError("La cantidad debe ser mayor que cero.")
 
+                for _ in range(cantidad):
+                    detalle = DetallePedido(
+                        _pedido_id=pedido.id,
+                        _producto_id=prod_id,
+                        _estado="Pedido realizado",
+                        _fecha_creacion=datetime.now()
+                    )
+                    self.repo.add(detalle)  # Guardar el detalle en la base de datos
+                    pedido.detalles.append(detalle)  # Asociar el detalle al pedido
+
+            # Cambiar el estado de la mesa a "Ocupada"
             mesa._cambiar_estado("Ocupada")
             self.repo.update(mesa)
-            print(f"Pedido creado para la mesa {mesa_numero}.")
+
+            print(f"Pedido {pedido.id} creado con {len(pedido.detalles)} detalle(s) para la mesa {mesa_numero}.")
         except Exception as e:
             self.repo.session.rollback()
             raise e
 
     def cambiar_estado(self, pedido_id: int, nuevo_estado: str):
-        """
-        Cambia el estado de un pedido existente.
-        Parámetros:
-            pedido_id (int): ID del pedido.
-            nuevo_estado (str): Nuevo estado del pedido.
-        """
         try:
             pedido = self.repo.get(Pedido, pedido_id)
             if not pedido:
                 raise ValueError("Pedido no encontrado.")
-            pedido._cambiar_estado(nuevo_estado)
-            self.repo.update(pedido)
-            print(f"Estado del pedido {pedido_id} actualizado a {nuevo_estado}.")
+            detalles_actualizados = False
+            allowed_states = ["Pedido realizado", "En preparación", "Entregado", "Finalizado"]
+            for detalle in pedido.detalles:
+                if detalle.estado in allowed_states:
+                    detalle._cambiar_estado(nuevo_estado)
+                    self.repo.update(detalle)
+                    detalles_actualizados = True
+            if detalles_actualizados and all(d.estado == nuevo_estado for d in pedido.detalles):
+                pedido._cambiar_estado(nuevo_estado)
+                self.repo.update(pedido)
+                print(f"Pedido {pedido_id} y todos sus detalles actualizados a '{nuevo_estado}'.")
+            else:
+                print(f"Algunos detalles del pedido {pedido_id} no se pudieron actualizar.")
         except Exception as e:
             self.repo.session.rollback()
             raise e
 
+    def cambiar_estado_detalle(self, detalle_id: int, nuevo_estado: str):
+        try:
+            detalle = self.repo.get(DetallePedido, detalle_id)
+            if not detalle:
+                raise ValueError("Detalle de pedido no encontrado.")
+            detalle._cambiar_estado(nuevo_estado)
+            self.repo.update(detalle)
+            pedido = self.repo.get(Pedido, detalle._pedido_id)
+            if all(d.estado == nuevo_estado for d in pedido.detalles):
+                pedido._cambiar_estado(nuevo_estado)
+                self.repo.update(pedido)
+                print(f"Detalle {detalle_id} y pedido {pedido.id} sincronizados a '{nuevo_estado}'.")
+            else:
+                print(f"Estado del detalle {detalle_id} actualizado a '{nuevo_estado}'.")
+        except Exception as e:
+            self.repo.session.rollback()
+            raise e
+
+# python
+# python
 class FacturaService:
-    """
-    Servicio para gestionar la facturación de mesas.
-    Atributos:
-        repo (Repository): Instancia del repositorio para operaciones CRUD.
-    """
     def __init__(self, repo: Repository):
-        """Inicializa el servicio con un repositorio."""
         self.repo = repo
 
-
     def facturar_mesa(self, mesa_numero: int):
-        """
-        Genera una factura para una mesa con pedidos finalizados.
-        Parámetros:
-            mesa_numero (int): Número de la mesa a facturar.
-        """
         try:
             mesa = self.repo.get_by_numero(Mesa, mesa_numero)
             if not mesa:
                 raise ValueError(f"Mesa {mesa_numero} no existe.")
 
-            # Se obtienen solo los pedidos finalizados (y no facturados) de la mesa
             pedidos_finalizados = [p for p in mesa.pedidos if p.estado == "Finalizado"]
             if not pedidos_finalizados:
                 raise ValueError("No hay pedidos finalizados para facturar.")
 
-            # Se crea la factura usando el id de mesero del primer pedido finalizado
-            factura = Factura(_mesa_id=mesa.id, _mesero_id=pedidos_finalizados[0]._mesero_id)
-            self.repo.add(factura)  # Se asegura que la factura tenga un ID
-
+            # Agrupar detalles por producto
+            items = {}
+            fecha_pedido = None
+            mesero_nombre = ""
             for pedido in pedidos_finalizados:
-                subtotal = sum(d.producto.precio * d._cantidad for d in pedido.detalles)
-                detalle = DetalleFactura(_factura_id=factura.id, _pedido_id=pedido.id, _subtotal=subtotal)
-                factura.detalles.append(detalle)
-                self.repo.add(detalle)
+                if not fecha_pedido:
+                    fecha_pedido = pedido._fecha_inicio
+                if not mesero_nombre and pedido.mesero:
+                    mesero_nombre = pedido.mesero.nombre
+                for detalle in pedido.detalles:
+                    prod = detalle.producto
+                    if prod.id not in items:
+                        items[prod.id] = {"nombre": prod.nombre, "cantidad": 0, "precio": prod.precio}
+                    items[prod.id]["cantidad"] += 1
 
-                # Cambiar el estado del pedido a "Facturado"
-                pedido._cambiar_estado("Facturado")
-                self.repo.update(pedido)
+            # Usamos el id del primer pedido finalizado para asociar el detalle de factura
+            first_pedido_id = pedidos_finalizados[0].id
 
-            factura._calcular_total()
+            factura = Factura(_mesa_id=mesa.id, _mesero_id=pedidos_finalizados[0]._mesero_id)
+            self.repo.add(factura)
+            subtotal_total = 0.0
+            for prod_id, info in items.items():
+                subtotal = info["cantidad"] * info["precio"]
+                subtotal_total += subtotal
+                detalle_fac = DetalleFactura(_factura_id=factura.id, _pedido_id=first_pedido_id, _subtotal=subtotal)
+                factura.detalles.append(detalle_fac)
+                self.repo.add(detalle_fac)
+            factura._total = subtotal_total
             self.repo.update(factura)
 
-            # Liberar la mesa al facturar
             mesa._cambiar_estado("Libre")
             self.repo.update(mesa)
 
-            print(f"\nFactura para Mesa {mesa_numero}")
-            print(f"Mesero (del pedido): {pedidos_finalizados[0].mesero.nombre}")
-            print("Detalles:")
-            for detalle in factura.detalles:
-                pedido = detalle.pedido
-                for d in pedido.detalles:
-                    print(f"  {d.producto.nombre} x{d._cantidad}: S/. {d.producto.precio * d._cantidad:.2f}")
+            # Impresión del resumen de factura
+            print("\n===== FACTURA =====")
+            print(f"Mesa: {mesa.numero}")
+            print(f"Mesero: {mesero_nombre}")
+            print(f"Fecha del pedido: {fecha_pedido:%Y-%m-%d %H:%M:%S}")
+            print("\nDetalle de Items:")
+            print("{:<30s} {:>5s} {:>10s} {:>10s}".format("Producto", "Cant", "Precio", "Subtotal"))
+            for info in items.values():
+                subtotal = info["cantidad"] * info["precio"]
+                print("{:<30s} {:>5d} {:>10.2f} {:>10.2f}".format(info["nombre"], info["cantidad"], info["precio"], subtotal))
+            print("-" * 60)
             print(f"Total: S/. {factura._total:.2f}")
         except Exception as e:
             self.repo.session.rollback()
