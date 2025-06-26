@@ -79,7 +79,6 @@ class DetallePedido(Base):
     __tablename__ = 'detalles_pedido'
     id = Column(Integer, primary_key=True, autoincrement=True)
     _pedido_id = Column(Integer, ForeignKey('pedidos.id'))
-    sub_id = Column(Integer)
     _producto_id = Column(Integer, ForeignKey('productos.id'))
     _estado = Column(String(30), default="Pedido realizado")
     # Se reemplaza _fecha_inicio por _fecha_creacion y se agregan nuevos campos
@@ -146,18 +145,61 @@ class Factura(Base):
     def _calcular_total(self):
         self._total = sum(detalle.subtotal for detalle in self.detalles)
 
+
+# python - Archivo: models.py (Clase DetalleFactura)
 class DetalleFactura(Base):
     __tablename__ = 'detalles_factura'
-    id = Column(Integer, primary_key=True)
-    _factura_id = Column(Integer, ForeignKey('facturas.id'))
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    _factura_id = Column(Integer, ForeignKey('facturas.id'), nullable=False)
     _pedido_id = Column(Integer, ForeignKey('pedidos.id'))
-    _subtotal = Column(Float)
+    _producto_id = Column(Integer, ForeignKey('productos.id'), nullable=False)
+    _cantidad = Column(Integer, nullable=False, default=1)
+    _precio_unitario = Column(Float, nullable=False)
+    _subtotal = Column(Float, nullable=False)
+
     factura = relationship("Factura", back_populates="detalles")
     pedido = relationship("Pedido")
+    producto = relationship("Producto")
+
+    @property
+    def producto_id(self):
+        return self._producto_id
+
+    @producto_id.setter
+    def producto_id(self, value):
+        self._producto_id = value
+
+    @property
+    def cantidad(self):
+        return self._cantidad
+
+    @cantidad.setter
+    def cantidad(self, value):
+        self._cantidad = value
+        self._update_subtotal()
+
+    @property
+    def precio_unitario(self):
+        return self._precio_unitario
+
+    @precio_unitario.setter
+    def precio_unitario(self, value):
+        self._precio_unitario = value
+        self._update_subtotal()
 
     @property
     def subtotal(self):
         return self._subtotal
+
+    @subtotal.setter
+    def subtotal(self, value):
+        self._subtotal = value
+
+    def _update_subtotal(self):
+        if self._precio_unitario is None or self._cantidad is None:
+            self._subtotal = 0.0
+        else:
+            self._subtotal = self._cantidad * self._precio_unitario
 
 engine = create_engine('mysql+pymysql://root:@localhost/restaurante')
 Base.metadata.create_all(engine)

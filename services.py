@@ -85,8 +85,8 @@ class PedidoService:
             self.repo.session.rollback()
             raise e
 
-# python
-# python
+
+
 class FacturaService:
     def __init__(self, repo: Repository):
         self.repo = repo
@@ -101,7 +101,6 @@ class FacturaService:
             if not pedidos_finalizados:
                 raise ValueError("No hay pedidos finalizados para facturar.")
 
-            # Agrupar detalles por producto
             items = {}
             fecha_pedido = None
             mesero_nombre = ""
@@ -112,38 +111,72 @@ class FacturaService:
                     mesero_nombre = pedido.mesero.nombre
                 for detalle in pedido.detalles:
                     prod = detalle.producto
+                    if not prod:
+                        continue
+                    precio = prod.precio if prod.precio is not None else 0.0
                     if prod.id not in items:
-                        items[prod.id] = {"nombre": prod.nombre, "cantidad": 0, "precio": prod.precio}
+                        items[prod.id] = {
+                            "nombre": prod.nombre,
+                            "cantidad": 0,
+                            "precio_unitario": precio,
+                            "pedido_id": pedido.id
+                        }
+                    else:
+                        if items[prod.id]["precio_unitario"] is None:
+                            items[prod.id]["precio_unitario"] = precio
                     items[prod.id]["cantidad"] += 1
 
-            # Usamos el id del primer pedido finalizado para asociar el detalle de factura
-            first_pedido_id = pedidos_finalizados[0].id
-
-            factura = Factura(_mesa_id=mesa.id, _mesero_id=pedidos_finalizados[0]._mesero_id)
+            factura = Factura(
+                _mesa_id=mesa.id,
+                _mesero_id=pedidos_finalizados[0]._mesero_id,
+                _fecha_hora=datetime.now(),
+                _total=0
+            )
             self.repo.add(factura)
-            subtotal_total = 0.0
+            total_fac = 0.0
+
             for prod_id, info in items.items():
-                subtotal = info["cantidad"] * info["precio"]
-                subtotal_total += subtotal
-                detalle_fac = DetalleFactura(_factura_id=factura.id, _pedido_id=first_pedido_id, _subtotal=subtotal)
+                cantidad = info["cantidad"]
+                precio_unitario = info["precio_unitario"]
+                subtotal = cantidad * precio_unitario
+                total_fac += subtotal
+
+                detalle_fac = DetalleFactura()
+                detalle_fac._factura_id = factura.id
+                detalle_fac._pedido_id = info["pedido_id"]
+                detalle_fac.producto_id = prod_id
+                # Asignar primero precio_unitario y luego cantidad
+                detalle_fac.precio_unitario = precio_unitario
+                detalle_fac.cantidad = cantidad
+
                 factura.detalles.append(detalle_fac)
                 self.repo.add(detalle_fac)
-            factura._total = subtotal_total
+
+            factura._total = total_fac
             self.repo.update(factura)
 
+            # Actualizar el estado de cada pedido finalizado a "Facturado"
+            for pedido in pedidos_finalizados:
+                pedido._estado = "Facturado"
+                self.repo.update(pedido)
+
+            # Liberar la mesa
             mesa._cambiar_estado("Libre")
             self.repo.update(mesa)
 
-            # Impresión del resumen de factura
             print("\n===== FACTURA =====")
             print(f"Mesa: {mesa.numero}")
             print(f"Mesero: {mesero_nombre}")
             print(f"Fecha del pedido: {fecha_pedido:%Y-%m-%d %H:%M:%S}")
-            print("\nDetalle de Items:")
+            print("\nDetalle de Ítems:")
             print("{:<30s} {:>5s} {:>10s} {:>10s}".format("Producto", "Cant", "Precio", "Subtotal"))
             for info in items.values():
-                subtotal = info["cantidad"] * info["precio"]
-                print("{:<30s} {:>5d} {:>10.2f} {:>10.2f}".format(info["nombre"], info["cantidad"], info["precio"], subtotal))
+                subtotal_display = info["cantidad"] * info["precio_unitario"]
+                print("{:<30s} {:>5d} {:>10.2f} {:>10.2f}".format(
+                    info["nombre"],
+                    info["cantidad"],
+                    info["precio_unitario"],
+                    subtotal_display))
             print("-" * 60)
             print(f"Total: S/. {factura._total:.2f}")
         except Exception as e:

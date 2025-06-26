@@ -1,11 +1,9 @@
-from datetime import date
 from models import Empleado, Mesa, Producto, Pedido, Factura, DetallePedido
 from repository import Repository
 from services import PedidoService, FacturaService
-from getpass import getpass
 from sqlalchemy.orm import sessionmaker
 from models import engine
-
+import pandas as pd
 SessionLocal = sessionmaker(bind=engine)
 
 class SesionUsuario:
@@ -362,6 +360,38 @@ def menu():
                             hora = f._fecha_hora.strftime("%H:%M")
                             print(f"Mesa {f.mesa.numero} | Hora {hora} | Mesero {f.mesero.nombre} | Total S/. {f._total:.2f}")
                         print(f"Total del día S/. {total_fecha:.2f}")
+
+                    # Preparar datos para el reporte Excel con cabecera y detalle
+                    header_data = []
+                    detail_data = []
+                    for f in facturas:
+                        header_data.append({
+                            "Factura ID": f.id,
+                            "Mesa": f.mesa.numero,
+                            "Mesero": f.mesero.nombre,
+                            "Fecha": f._fecha_hora.strftime("%Y-%m-%d"),
+                            "Hora": f._fecha_hora.strftime("%H:%M"),
+                            "Total": f._total,
+                        })
+                        # Se asume que cada factura tiene un atributo 'detalles'
+                        for detalle in getattr(f, "detalles", []):
+                            # Se usan los atributos reales del objeto DetalleFactura para obtener los datos
+                            cantidad = detalle.cantidad
+                            nombre_producto = detalle.producto.nombre if detalle.producto else "N/A"
+                            precio = detalle.producto.precio if detalle.producto else 0
+                            detail_data.append({
+                                "Factura ID": f.id,
+                                "Producto": nombre_producto,
+                                "Cantidad": cantidad,
+                                "Precio Unitario": precio,
+                                "Subtotal": cantidad * precio,
+                            })
+                    df_header = pd.DataFrame(header_data)
+                    df_detail = pd.DataFrame(detail_data)
+                    with pd.ExcelWriter("reporte_facturacion_diaria.xlsx", engine="openpyxl") as writer:
+                        df_header.to_excel(writer, sheet_name="Cabecera", index=False)
+                        df_detail.to_excel(writer, sheet_name="Detalle", index=False)
+                    print("Reporte Excel generado: reporte_facturacion_diaria.xlsx")
             elif opcion == "9":
                 print("Saliendo del sistema…")
                 session.close()
