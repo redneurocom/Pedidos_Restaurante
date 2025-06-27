@@ -157,8 +157,7 @@ def tomar_pedido(repo: Repository, pedido_service: PedidoService, mesero_id: int
     except ValueError as e:
         print(f"Error: {e}")
 
-# python
-# python
+
 def ver_cola_pedidos(repo: Repository):
     pedidos = repo.get_all(Pedido)
     if not pedidos:
